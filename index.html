@@ -12,11 +12,11 @@
     --tag-bg: rgba(255, 255, 255, 0.92);
     --tag-ink: #1a1a1a;
     --logo-blue: #4a9eff;
+    --side-margin: 20px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-  /* CRITICAL: do NOT set overflow on html/body — it kills sticky on iOS Safari */
   html, body {
     background: var(--bg);
     font-family: 'Times New Roman', Georgia, serif;
@@ -25,7 +25,7 @@
   }
 
   body {
-    overflow-x: clip; /* clip is safe; hidden breaks sticky */
+    overflow-x: clip;
   }
 
   .top-spacer, .bottom-spacer {
@@ -40,14 +40,12 @@
   .top-spacer { height: 50vh; }
   .bottom-spacer { height: 80vh; padding: 40px 24px; text-align: center; }
 
-  /* Pin container — explicit height, no flex/grid */
   .pin-container {
     position: relative;
     height: 500vh;
     width: 100%;
   }
 
-  /* Sticky stage — block element, no flex on container */
   .stage {
     position: -webkit-sticky;
     position: sticky;
@@ -58,15 +56,16 @@
     background: var(--bg);
   }
 
-  /* Image stack — absolutely positioned, transform-driven for performance */
+  /* Image stack — top:0 so no gap once at full bleed.
+     Initial smaller state achieved via transform with origin top-center,
+     so it visually sits a bit lower without leaving a layout gap. */
   .image-stack {
     position: absolute;
     left: 50%;
-    top: 5vh; /* sits in upper portion */
-    transform-origin: center top;
+    top: 0;
+    transform-origin: 50% 0%;
     width: 100vw;
-    aspect-ratio: 3 / 4; /* portrait */
-    max-height: 65vh;
+    height: 60vh;
     overflow: hidden;
     will-change: transform;
   }
@@ -83,15 +82,13 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: -apple-system, sans-serif;
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
-    font-weight: 500;
+  }
+
+  .image-block img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .img-1 { background: linear-gradient(160deg, #d4c9b8 0%, #b8a888 100%); }
@@ -133,20 +130,45 @@
     display: inline-block;
   }
 
-  /* Lockup area — sits below image area */
+  /* Vertical progress bar — sits inside image, right side, vertically centered */
+  .v-progress {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 2px;
+    overflow: hidden;
+    z-index: 10;
+  }
+
+  .v-progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 2px;
+    height: 0%;
+    will-change: height;
+  }
+
+  /* Lockup area — sits directly below image with a 48px gap */
   .lockup-area {
     position: absolute;
-    bottom: 0;
+    top: calc(60vh + 48px);
     left: 0;
     right: 0;
-    height: 30vh;
-    padding: 20px 24px 32px;
+    bottom: 0;
+    padding: 0 var(--side-margin) 32px;
     overflow: hidden;
   }
 
   .lockup {
     position: absolute;
-    inset: 20px 24px 32px;
+    inset: 0 var(--side-margin) 32px;
     will-change: opacity;
   }
 
@@ -192,21 +214,6 @@
     font-size: 16px;
   }
 
-  .progress {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: rgba(0,0,0,0.05);
-    z-index: 100;
-  }
-  .progress-bar {
-    height: 100%;
-    background: var(--ink);
-    width: 0%;
-  }
-
   .debug {
     position: fixed;
     top: 12px;
@@ -224,7 +231,6 @@
 </head>
 <body>
 
-<div class="progress"><div class="progress-bar" id="progressBar"></div></div>
 <div class="debug" id="debug">idle</div>
 
 <div class="top-spacer">↓ Scroll to begin</div>
@@ -233,21 +239,26 @@
   <div class="stage" id="stage">
     <div class="image-stack" id="imageStack">
       <div class="image-frame" id="frame1" style="clip-path: inset(0% 0% 0% 0%);">
-        <div class="image-block img-1">IMAGE 1 — DERMA</div>
+        <div class="image-block img-1"><img src="image-1.jpg" alt="" /></div>
       </div>
       <div class="image-frame" id="frame2" style="clip-path: inset(100% 0% 0% 0%);">
-        <div class="image-block img-2">IMAGE 2 — ECHO</div>
+        <div class="image-block img-2"><img src="image-2.jpg" alt="" /></div>
       </div>
       <div class="image-frame" id="frame3" style="clip-path: inset(100% 0% 0% 0%);">
-        <div class="image-block img-3">IMAGE 3 — SPECTRUM</div>
+        <div class="image-block img-3"><img src="image-3.jpg" alt="" /></div>
       </div>
       <div class="image-frame" id="frame4" style="clip-path: inset(100% 0% 0% 0%);">
-        <div class="image-block img-4">IMAGE 4 — THERMAL</div>
+        <div class="image-block img-4"><img src="image-4.jpg" alt="" /></div>
       </div>
 
       <div class="tags" id="tags">
         <span class="tag"><span class="tag-logo"></span>DERMA-2</span>
         <span class="tag">SKIN IMAGING</span>
+      </div>
+
+      <!-- Vertical progress bar inside the image -->
+      <div class="v-progress">
+        <div class="v-progress-bar" id="vProgressBar"></div>
       </div>
     </div>
 
@@ -259,18 +270,18 @@
       </div>
       <div class="lockup" id="lockup2" style="opacity: 0;">
         <h2>Know every beat, every branch, every detail.</h2>
-        <p>We perform a comprehensive examination of your heart and arterial tree. Lorem ipsum dolor three lines copy.</p>
+        <p>We perform a comprehensive examination of your heart and arterial tree.</p>
         <a class="learn-more" href="#"><span class="learn-more-icon">→</span>Learn More</a>
       </div>
       <div class="lockup" id="lockup3" style="opacity: 0;">
-        <h2>See the signals your body is trying to hide.</h2>
-        <p>Our proprietary thermal technology maps inflammatory responses and identifies immune suppressors in real-time.</p>
-        <a class="learn-more" href="#"><span class="learn-more-icon">→</span>Learn More</a>
+        <h2>Get a full blood story, without the lab-grade wait.</h2>
+        <p>Get immediate results for over 50 essential markers, including heart health, metabolism, and vitality.</p>
+        <a class="learn-more" href="#"><span class="learn-more-icon">→</span>Book a Body Scan</a>
       </div>
       <div class="lockup" id="lockup4" style="opacity: 0;">
-        <h2>Every system, continuously understood.</h2>
-        <p>From skin to circulation to cellular response — Neko builds a complete picture of your health, every visit.</p>
-        <a class="learn-more" href="#"><span class="learn-more-icon">→</span>Learn More</a>
+        <h2>See the signals your body is trying to hide.</h2>
+        <p>Our proprietary thermal technology maps inflammatory responses and identifies immune suppressors in real-time.</p>
+        <a class="learn-more" href="#"><span class="learn-more-icon">→</span>Book a Body Scan</a>
       </div>
     </div>
   </div>
@@ -294,38 +305,49 @@
     document.getElementById('lockup4'),
   ];
   const tagsEl = document.getElementById('tags');
-  const progressBar = document.getElementById('progressBar');
+  const vProgressBar = document.getElementById('vProgressBar');
   const debugEl = document.getElementById('debug');
 
   const tagSets = [
     [{logo: true, text: 'DERMA-2'}, {logo: false, text: 'SKIN IMAGING'}],
-    [{logo: true, text: 'ECHO-1'}, {logo: false, text: 'HEART'}],
-    [{logo: true, text: 'SPECTRUM-2'}, {logo: false, text: 'BIOMETRICS'}],
-    [{logo: true, text: 'THERMAL-1'}, {logo: false, text: 'INFLAMMATION'}],
+    [{logo: true, text: 'ECHO'}, {logo: false, text: 'HEART'}],
+    [{logo: true, text: 'NEKO LAB'}, {logo: false, text: 'BLOOD HEALTH'}],
+    [{logo: true, text: 'DERMA-2'}, {logo: false, text: 'SPECTRUM-2'}, {logo: false, text: 'BIOMETRICS'}],
   ];
 
   // Phase boundaries (% of total pinned scroll)
+  // intro is now shorter so text+image lock in faster, then text holds
   const PHASE = {
-    introEnd: 0.15,
-    step1End: 0.35,
-    step2End: 0.55,
-    step3End: 0.75,
-    holdEnd: 0.85,
-    outroEnd: 1.00,
+    introEnd: 0.12,    // image scales to full + first text fades in
+    step1End: 0.32,    // step 1 → 2
+    step2End: 0.54,    // step 2 → 3
+    step3End: 0.76,    // step 3 → 4
+    holdEnd: 0.88,     // hold on step 4
+    outroEnd: 1.00,    // scale back out
   };
 
-  const INITIAL_SCALE = 0.82; // image starts at 82% of full size
+  const SIDE_MARGIN_PX = 20;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
   function smooth(t) { return t * t * (3 - 2 * t); }
 
   function setImageTransform(progress) {
-    // 0 → small & centered with margins; 1 → full bleed
+    // progress 0 → small with 20px side margins
+    // progress 1 → full bleed (top:0, full width)
     const t = smooth(clamp(progress, 0, 1));
-    const scale = lerp(INITIAL_SCALE, 1, t);
-    // Always centered horizontally via translateX(-50%)
-    imageStack.style.transform = `translateX(-50%) scale(${scale})`;
+    const vw = window.innerWidth;
+
+    // Initial scale: image is (vw - 40)/vw of full width = ~89% on a 375px screen
+    const initialScale = (vw - SIDE_MARGIN_PX * 2) / vw;
+    const scale = lerp(initialScale, 1, t);
+
+    // Initial vertical offset: push image down so there's room visually at top
+    // when small; at full lock, pull to top:0 so no gap
+    const initialOffsetY = 40; // px below top of stage when small
+    const offsetY = lerp(initialOffsetY, 0, t);
+
+    imageStack.style.transform = `translate(-50%, ${offsetY}px) scale(${scale})`;
     imageStack.style.borderRadius = lerp(8, 0, t) + 'px';
   }
 
@@ -346,6 +368,11 @@
     ).join('');
   }
 
+  function setProgressBar(stepProgress) {
+    // stepProgress goes 0 → 1 across the 4 main steps (after intro, before outro)
+    vProgressBar.style.height = (stepProgress * 100) + '%';
+  }
+
   let currentTagStep = -1;
 
   function update() {
@@ -358,7 +385,13 @@
     let progress = scrolled / totalScrollable;
     progress = clamp(progress, 0, 1);
 
-    progressBar.style.width = (progress * 100) + '%';
+    // Calculate progress through the 4 main steps for the vertical bar
+    // (excludes intro and outro)
+    const stepStart = PHASE.introEnd;
+    const stepEnd = PHASE.holdEnd;
+    let stepProgress = (progress - stepStart) / (stepEnd - stepStart);
+    stepProgress = clamp(stepProgress, 0, 1);
+    setProgressBar(stepProgress);
 
     if (progress <= PHASE.introEnd) {
       const p = progress / PHASE.introEnd;
@@ -367,6 +400,7 @@
       setFrameReveal(1, 0);
       setFrameReveal(2, 0);
       setFrameReveal(3, 0);
+      // First lockup fades in over the full intro phase, fully visible by end
       setLockupOpacity(0, smooth(p));
       setLockupOpacity(1, 0);
       setLockupOpacity(2, 0);
