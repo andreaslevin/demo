@@ -6,7 +6,7 @@
 <title>Neko — Story scroll</title>
 <style>
   :root {
-    --bg: #f5f1ea;
+    --bg: #FFFFFF;
     --ink: #1a1a1a;
     --muted: #6b6b6b;
     --tag-bg: rgba(255, 255, 255, 0.92);
@@ -24,15 +24,10 @@
     width: 100%;
   }
 
-  body {
-    overflow-x: clip;
-  }
+  body { overflow-x: clip; }
 
-  /* In snap mode, lock body scroll entirely */
-  body.snap-mode {
-    overflow: hidden;
-    height: 100vh;
-  }
+  /* When locked into the snap sequence, body scroll is frozen */
+  body.locked { overflow: hidden; height: 100vh; }
 
   .top-spacer, .bottom-spacer {
     width: 100%;
@@ -43,23 +38,17 @@
     color: var(--muted);
     font-size: 14px;
   }
-  .top-spacer { height: 50vh; }
-  .bottom-spacer { height: 80vh; padding: 40px 24px; text-align: center; }
+  .top-spacer { height: 80vh; }
+  .bottom-spacer { height: 100vh; padding: 40px 24px; text-align: center; }
 
-  body.snap-mode .top-spacer,
-  body.snap-mode .bottom-spacer { display: none; }
-
+  /* SCROLL MODE: long pin container */
   .pin-container {
     position: relative;
     height: 500vh;
     width: 100%;
   }
 
-  body.snap-mode .pin-container {
-    height: 100vh;
-  }
-
-  .stage {
+  .pin-container .stage {
     position: -webkit-sticky;
     position: sticky;
     top: 0;
@@ -67,6 +56,24 @@
     width: 100%;
     overflow: hidden;
     background: var(--bg);
+  }
+
+  /* SNAP MODE: stage holder = 100vh, stage becomes fixed when locked */
+  body.mode-snap .pin-container {
+    height: 100vh;
+  }
+
+  body.mode-snap .pin-container .stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100vh;
+  }
+
+  body.mode-snap.locked .pin-container .stage {
+    position: fixed;
+    top: 0;
+    left: 0;
   }
 
   .image-stack {
@@ -247,7 +254,6 @@
     font-family: inherit;
     font-size: inherit;
     font-weight: inherit;
-    transition: all 0.2s;
   }
 
   .mode-toggle button.active {
@@ -273,8 +279,8 @@
 <body>
 
 <div class="mode-toggle">
-  <button id="modeScroll" class="active">Scroll</button>
-  <button id="modeSnap">Snap</button>
+  <button id="modeScroll">Scroll</button>
+  <button id="modeSnap" class="active">Snap</button>
 </div>
 
 <div class="debug" id="debug">idle</div>
@@ -336,6 +342,7 @@
 
 <script>
   const pinContainer = document.getElementById('pinContainer');
+  const stage = document.getElementById('stage');
   const imageStack = document.getElementById('imageStack');
   const frames = [
     document.getElementById('frame1'),
@@ -362,18 +369,7 @@
     [{logo: true, text: 'DERMA-2'}, {logo: false, text: 'SPECTRUM-2'}, {logo: false, text: 'BIOMETRICS'}],
   ];
 
-  // Anchor points: progress values that represent fully "settled" states.
-  // Each snap point lands at the END of a transition phase, so the new image
-  // is fully revealed and the new text is fully faded in.
-  // 0          = pre-intro (idle, image small)
-  // introEnd   = step 1 settled (image full, text 1 visible)
-  // step1End   = step 2 settled
-  // step2End   = step 3 settled
-  // step3End   = step 4 settled
-  // holdEnd    = still step 4 (last fully-locked state before outro)
-  // 1          = post-outro (image small again)
-  const SNAP_POINTS = [0, 0.12, 0.32, 0.54, 0.76, 1];
-
+  // Scroll-mode phase boundaries (% of pinned scroll)
   const PHASE = {
     introEnd: 0.12,
     step1End: 0.32,
@@ -383,12 +379,19 @@
     outroEnd: 1.00,
   };
 
+  // Snap-mode step targets — settled progress values
+  const SNAP_STEPS = [0.12, 0.32, 0.54, 0.76]; // step 1, 2, 3, 4
+  const SNAP_TRIGGER_PX = 80;     // distance from top at which natural scroll snaps into lock
+  const SNAP_DURATION = 900;      // ms — slower for smoother snap
+  const PULL_DURATION = 600;      // ms — entry pull-in animation
+
   const SIDE_MARGIN_PX = 20;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
   function smooth(t) { return t * t * (3 - 2 * t); }
-  function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
+  function easeInOutQuint(t) { return t < 0.5 ? 16*t*t*t*t*t : 1 - Math.pow(-2*t+2, 5)/2; }
+  function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
 
   function setImageTransform(progress) {
     const t = smooth(clamp(progress, 0, 1));
@@ -424,7 +427,7 @@
 
   let currentTagStep = -1;
 
-  // Pure render function — given a normalised progress 0→1, render the scene
+  // Render a normalised 0→1 progress through the full sequence
   function render(progress) {
     progress = clamp(progress, 0, 1);
 
@@ -511,7 +514,7 @@
     }
   }
 
-  // -------------------- SCROLL MODE --------------------
+  // ==================== SCROLL MODE ====================
   function updateFromScroll() {
     const containerRect = pinContainer.getBoundingClientRect();
     const containerHeight = pinContainer.offsetHeight;
@@ -522,109 +525,228 @@
     render(progress);
   }
 
-  let ticking = false;
+  let scrollTicking = false;
   function onScroll() {
-    if (!ticking) {
-      requestAnimationFrame(() => {
-        updateFromScroll();
-        ticking = false;
-      });
-      ticking = true;
+    if (mode === 'scroll') {
+      if (!scrollTicking) {
+        requestAnimationFrame(() => {
+          updateFromScroll();
+          scrollTicking = false;
+        });
+        scrollTicking = true;
+      }
+    } else if (mode === 'snap') {
+      handleSnapScroll();
     }
   }
 
-  // -------------------- SNAP MODE --------------------
-  let snapMode = false;
-  let snapIndex = 0; // index into SNAP_POINTS
+  // ==================== SNAP MODE ====================
+  // States:
+  //  'before' — natural scroll above stage (top spacer visible)
+  //  'pulling' — animating into locked state (entry pull)
+  //  'locked'  — body scroll frozen, swipe drives step changes
+  //  'after'   — natural scroll below stage (bottom spacer visible)
+
+  let snapState = 'before';
+  let snapStepIndex = 0;        // 0..3 (which step we're settled on)
   let snapAnimating = false;
   let snapAnimStart = 0;
   let snapFromProgress = 0;
   let snapToProgress = 0;
-  const SNAP_DURATION = 700; // ms per snap
+  let snapDuration = SNAP_DURATION;
+  let snapEasing = easeInOutQuint;
 
-  function animateSnap() {
-    if (!snapAnimating) return;
-    const now = performance.now();
-    const elapsed = now - snapAnimStart;
-    const t = clamp(elapsed / SNAP_DURATION, 0, 1);
-    const eased = easeInOutCubic(t);
-    const currentProgress = lerp(snapFromProgress, snapToProgress, eased);
-    render(currentProgress);
-    if (t < 1) {
-      requestAnimationFrame(animateSnap);
-    } else {
-      snapAnimating = false;
+  function animateSnap(onDone) {
+    function tick() {
+      const elapsed = performance.now() - snapAnimStart;
+      const t = clamp(elapsed / snapDuration, 0, 1);
+      const eased = snapEasing(t);
+      const cur = lerp(snapFromProgress, snapToProgress, eased);
+      render(cur);
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        snapAnimating = false;
+        if (onDone) onDone();
+      }
+    }
+    snapAnimating = true;
+    snapAnimStart = performance.now();
+    requestAnimationFrame(tick);
+  }
+
+  // Called when natural scroll brings stage close enough to top → trigger lock
+  function pullIntoLock() {
+    if (snapState !== 'before' || snapAnimating) return;
+    snapState = 'pulling';
+
+    // Snap window scroll exactly to stage-top, then freeze
+    const stageTop = pinContainer.offsetTop;
+    window.scrollTo(0, stageTop);
+    document.body.classList.add('locked');
+
+    // Animate from idle (0) to step 1 (SNAP_STEPS[0])
+    snapStepIndex = 0;
+    snapFromProgress = 0;
+    snapToProgress = SNAP_STEPS[0];
+    snapDuration = PULL_DURATION;
+    snapEasing = easeOutQuart;
+    animateSnap(() => {
+      snapState = 'locked';
+      snapDuration = SNAP_DURATION;
+      snapEasing = easeInOutQuint;
+    });
+  }
+
+  // Called when user swipes inside locked state
+  function snapToStep(targetIndex) {
+    if (snapState !== 'locked' || snapAnimating) return;
+
+    // If swiping past last step → release downward
+    if (targetIndex > SNAP_STEPS.length - 1) {
+      releaseDownward();
+      return;
+    }
+    // If swiping before first step → release upward
+    if (targetIndex < 0) {
+      releaseUpward();
+      return;
+    }
+    if (targetIndex === snapStepIndex) return;
+
+    snapFromProgress = SNAP_STEPS[snapStepIndex];
+    snapToProgress = SNAP_STEPS[targetIndex];
+    snapStepIndex = targetIndex;
+    snapDuration = SNAP_DURATION;
+    snapEasing = easeInOutQuint;
+    animateSnap();
+  }
+
+  function releaseDownward() {
+    if (snapAnimating) return;
+    snapState = 'pulling';
+    // Animate from step 4 (holdEnd) through outro (1.0) → image scales back down with 20px margins
+    snapFromProgress = SNAP_STEPS[SNAP_STEPS.length - 1];
+    snapToProgress = 1;
+    snapDuration = PULL_DURATION;
+    snapEasing = easeOutQuart;
+    animateSnap(() => {
+      // Unlock body scroll. Stage stays right where it is (card visible in
+      // scaled-out idle state, mirroring the entry).
+      document.body.classList.remove('locked');
+      const stageTop = pinContainer.offsetTop;
+      window.scrollTo(0, stageTop);
+      lastScrollY = window.scrollY;
+      snapState = 'after';
+    });
+  }
+
+  function releaseUpward() {
+    if (snapAnimating) return;
+    snapState = 'pulling';
+    // Animate from step 1 back to idle
+    snapFromProgress = SNAP_STEPS[0];
+    snapToProgress = 0;
+    snapDuration = PULL_DURATION;
+    snapEasing = easeOutQuart;
+    animateSnap(() => {
+      document.body.classList.remove('locked');
+      const stageTop = pinContainer.offsetTop;
+      window.scrollTo(0, stageTop - 1);
+      snapState = 'before';
+    });
+  }
+
+  // Watch natural scroll while in snap mode → trigger pull-in when close enough
+  let lastScrollY = 0;
+  function handleSnapScroll() {
+    const currentScrollY = window.scrollY;
+    const scrollingDown = currentScrollY > lastScrollY;
+    const scrollingUp = currentScrollY < lastScrollY;
+    lastScrollY = currentScrollY;
+
+    if (snapState === 'before') {
+      const containerRect = pinContainer.getBoundingClientRect();
+      // Only pull in when scrolling DOWN into the stage
+      if (scrollingDown && containerRect.top <= SNAP_TRIGGER_PX && containerRect.top > -10) {
+        pullIntoLock();
+      }
+    } else if (snapState === 'after') {
+      const containerRect = pinContainer.getBoundingClientRect();
+      // Only re-lock when scrolling UP back into the stage from below
+      if (scrollingUp && containerRect.top >= -SNAP_TRIGGER_PX && containerRect.top <= SNAP_TRIGGER_PX) {
+        const stageTop = pinContainer.offsetTop;
+        window.scrollTo(0, stageTop);
+        document.body.classList.add('locked');
+        snapStepIndex = SNAP_STEPS.length - 1;
+        render(SNAP_STEPS[snapStepIndex]);
+        snapState = 'locked';
+      }
     }
   }
 
-  function snapTo(targetIndex) {
-    targetIndex = clamp(targetIndex, 0, SNAP_POINTS.length - 1);
-    if (targetIndex === snapIndex && !snapAnimating) return;
-    if (snapAnimating) return; // ignore during animation
-    snapFromProgress = SNAP_POINTS[snapIndex];
-    snapToProgress = SNAP_POINTS[targetIndex];
-    snapIndex = targetIndex;
-    snapAnimStart = performance.now();
-    snapAnimating = true;
-    requestAnimationFrame(animateSnap);
-  }
-
-  // Touch handling for snap
+  // Touch handling — only active in locked snap state
   let touchStartY = 0;
   let touchActive = false;
-  const SWIPE_THRESHOLD = 30; // px
+  const SWIPE_THRESHOLD = 30;
 
   function onTouchStart(e) {
-    if (!snapMode) return;
+    if (mode !== 'snap' || snapState !== 'locked') return;
     touchStartY = e.touches[0].clientY;
     touchActive = true;
   }
 
   function onTouchEnd(e) {
-    if (!snapMode || !touchActive) return;
+    if (mode !== 'snap' || !touchActive) return;
     touchActive = false;
+    if (snapState !== 'locked') return;
     const touchEndY = e.changedTouches[0].clientY;
-    const dy = touchStartY - touchEndY; // positive = swipe up
+    const dy = touchStartY - touchEndY;
     if (Math.abs(dy) < SWIPE_THRESHOLD) return;
-    if (dy > 0) snapTo(snapIndex + 1);
-    else snapTo(snapIndex - 1);
+    if (dy > 0) snapToStep(snapStepIndex + 1);
+    else snapToStep(snapStepIndex - 1);
   }
 
-  // Wheel handling for snap (with cooldown)
+  // Wheel handling
   let wheelCooldown = false;
   function onWheel(e) {
-    if (!snapMode) return;
+    if (mode !== 'snap') return;
+    if (snapState !== 'locked') return;
     e.preventDefault();
     if (wheelCooldown || snapAnimating) return;
     if (Math.abs(e.deltaY) < 5) return;
     wheelCooldown = true;
     setTimeout(() => { wheelCooldown = false; }, SNAP_DURATION + 100);
-    if (e.deltaY > 0) snapTo(snapIndex + 1);
-    else snapTo(snapIndex - 1);
+    if (e.deltaY > 0) snapToStep(snapStepIndex + 1);
+    else snapToStep(snapStepIndex - 1);
   }
 
   // Keyboard for desktop testing
   function onKey(e) {
-    if (!snapMode) return;
-    if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); snapTo(snapIndex + 1); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); snapTo(snapIndex - 1); }
+    if (mode !== 'snap' || snapState !== 'locked') return;
+    if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); snapToStep(snapStepIndex + 1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); snapToStep(snapStepIndex - 1); }
   }
 
-  // -------------------- MODE SWITCHING --------------------
-  function setMode(mode) {
-    if (mode === 'snap') {
-      snapMode = true;
-      document.body.classList.add('snap-mode');
+  // ==================== MODE SWITCHING ====================
+  let mode = 'scroll';
+
+  function setMode(newMode) {
+    mode = newMode;
+    document.body.classList.remove('locked', 'mode-snap');
+    if (newMode === 'snap') {
+      document.body.classList.add('mode-snap');
       modeScrollBtn.classList.remove('active');
       modeSnapBtn.classList.add('active');
-      // Reset to start
-      snapIndex = 0;
+      snapState = 'before';
+      snapStepIndex = 0;
       snapAnimating = false;
       window.scrollTo(0, 0);
-      render(SNAP_POINTS[0]);
+      // Render the idle state (image small with margins)
+      render(0);
+      // Make sure first lockup is visible at idle
+      setLockupOpacity(0, 0);
     } else {
-      snapMode = false;
-      document.body.classList.remove('snap-mode');
       modeScrollBtn.classList.add('active');
       modeSnapBtn.classList.remove('active');
       window.scrollTo(0, 0);
@@ -637,15 +759,16 @@
 
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', () => {
-    if (snapMode) render(SNAP_POINTS[snapIndex]);
-    else updateFromScroll();
+    if (mode === 'scroll') updateFromScroll();
+    else if (snapState === 'locked') render(SNAP_STEPS[snapStepIndex]);
   });
   window.addEventListener('touchstart', onTouchStart, { passive: true });
   window.addEventListener('touchend', onTouchEnd, { passive: true });
   window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('keydown', onKey);
 
-  updateFromScroll();
+  // Start in snap mode by default
+  setMode('snap');
 </script>
 
 </body>
