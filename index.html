@@ -28,6 +28,12 @@
     overflow-x: clip;
   }
 
+  /* In snap mode, lock body scroll entirely */
+  body.snap-mode {
+    overflow: hidden;
+    height: 100vh;
+  }
+
   .top-spacer, .bottom-spacer {
     width: 100%;
     display: flex;
@@ -40,10 +46,17 @@
   .top-spacer { height: 50vh; }
   .bottom-spacer { height: 80vh; padding: 40px 24px; text-align: center; }
 
+  body.snap-mode .top-spacer,
+  body.snap-mode .bottom-spacer { display: none; }
+
   .pin-container {
     position: relative;
     height: 500vh;
     width: 100%;
+  }
+
+  body.snap-mode .pin-container {
+    height: 100vh;
   }
 
   .stage {
@@ -56,9 +69,6 @@
     background: var(--bg);
   }
 
-  /* Image stack — top:0 so no gap once at full bleed.
-     Initial smaller state achieved via transform with origin top-center,
-     so it visually sits a bit lower without leaving a layout gap. */
   .image-stack {
     position: absolute;
     left: 50%;
@@ -130,7 +140,6 @@
     display: inline-block;
   }
 
-  /* Vertical progress bar — sits inside image, right side, vertically centered */
   .v-progress {
     position: absolute;
     right: 14px;
@@ -155,7 +164,6 @@
     will-change: height;
   }
 
-  /* Lockup area — sits directly below image with a 48px gap */
   .lockup-area {
     position: absolute;
     top: calc(60vh + 48px);
@@ -214,6 +222,39 @@
     font-size: 16px;
   }
 
+  /* Mode toggle */
+  .mode-toggle {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    display: flex;
+    background: rgba(0,0,0,0.7);
+    border-radius: 100px;
+    padding: 3px;
+    font-family: -apple-system, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .mode-toggle button {
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    padding: 6px 12px;
+    border-radius: 100px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    transition: all 0.2s;
+  }
+
+  .mode-toggle button.active {
+    background: white;
+    color: black;
+  }
+
   .debug {
     position: fixed;
     top: 12px;
@@ -230,6 +271,11 @@
 </style>
 </head>
 <body>
+
+<div class="mode-toggle">
+  <button id="modeScroll" class="active">Scroll</button>
+  <button id="modeSnap">Snap</button>
+</div>
 
 <div class="debug" id="debug">idle</div>
 
@@ -256,7 +302,6 @@
         <span class="tag">SKIN IMAGING</span>
       </div>
 
-      <!-- Vertical progress bar inside the image -->
       <div class="v-progress">
         <div class="v-progress-bar" id="vProgressBar"></div>
       </div>
@@ -307,6 +352,8 @@
   const tagsEl = document.getElementById('tags');
   const vProgressBar = document.getElementById('vProgressBar');
   const debugEl = document.getElementById('debug');
+  const modeScrollBtn = document.getElementById('modeScroll');
+  const modeSnapBtn = document.getElementById('modeSnap');
 
   const tagSets = [
     [{logo: true, text: 'DERMA-2'}, {logo: false, text: 'SKIN IMAGING'}],
@@ -315,15 +362,25 @@
     [{logo: true, text: 'DERMA-2'}, {logo: false, text: 'SPECTRUM-2'}, {logo: false, text: 'BIOMETRICS'}],
   ];
 
-  // Phase boundaries (% of total pinned scroll)
-  // intro is now shorter so text+image lock in faster, then text holds
+  // Anchor points: progress values that represent fully "settled" states.
+  // Each snap point lands at the END of a transition phase, so the new image
+  // is fully revealed and the new text is fully faded in.
+  // 0          = pre-intro (idle, image small)
+  // introEnd   = step 1 settled (image full, text 1 visible)
+  // step1End   = step 2 settled
+  // step2End   = step 3 settled
+  // step3End   = step 4 settled
+  // holdEnd    = still step 4 (last fully-locked state before outro)
+  // 1          = post-outro (image small again)
+  const SNAP_POINTS = [0, 0.12, 0.32, 0.54, 0.76, 1];
+
   const PHASE = {
-    introEnd: 0.12,    // image scales to full + first text fades in
-    step1End: 0.32,    // step 1 → 2
-    step2End: 0.54,    // step 2 → 3
-    step3End: 0.76,    // step 3 → 4
-    holdEnd: 0.88,     // hold on step 4
-    outroEnd: 1.00,    // scale back out
+    introEnd: 0.12,
+    step1End: 0.32,
+    step2End: 0.54,
+    step3End: 0.76,
+    holdEnd: 0.88,
+    outroEnd: 1.00,
   };
 
   const SIDE_MARGIN_PX = 20;
@@ -331,22 +388,15 @@
   function lerp(a, b, t) { return a + (b - a) * t; }
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
   function smooth(t) { return t * t * (3 - 2 * t); }
+  function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; }
 
   function setImageTransform(progress) {
-    // progress 0 → small with 20px side margins
-    // progress 1 → full bleed (top:0, full width)
     const t = smooth(clamp(progress, 0, 1));
     const vw = window.innerWidth;
-
-    // Initial scale: image is (vw - 40)/vw of full width = ~89% on a 375px screen
     const initialScale = (vw - SIDE_MARGIN_PX * 2) / vw;
     const scale = lerp(initialScale, 1, t);
-
-    // Initial vertical offset: push image down so there's room visually at top
-    // when small; at full lock, pull to top:0 so no gap
-    const initialOffsetY = 40; // px below top of stage when small
+    const initialOffsetY = 40;
     const offsetY = lerp(initialOffsetY, 0, t);
-
     imageStack.style.transform = `translate(-50%, ${offsetY}px) scale(${scale})`;
     imageStack.style.borderRadius = lerp(8, 0, t) + 'px';
   }
@@ -369,24 +419,15 @@
   }
 
   function setProgressBar(stepProgress) {
-    // stepProgress goes 0 → 1 across the 4 main steps (after intro, before outro)
     vProgressBar.style.height = (stepProgress * 100) + '%';
   }
 
   let currentTagStep = -1;
 
-  function update() {
-    const containerRect = pinContainer.getBoundingClientRect();
-    const containerHeight = pinContainer.offsetHeight;
-    const vh = window.innerHeight;
-
-    const scrolled = -containerRect.top;
-    const totalScrollable = containerHeight - vh;
-    let progress = scrolled / totalScrollable;
+  // Pure render function — given a normalised progress 0→1, render the scene
+  function render(progress) {
     progress = clamp(progress, 0, 1);
 
-    // Calculate progress through the 4 main steps for the vertical bar
-    // (excludes intro and outro)
     const stepStart = PHASE.introEnd;
     const stepEnd = PHASE.holdEnd;
     let stepProgress = (progress - stepStart) / (stepEnd - stepStart);
@@ -400,7 +441,6 @@
       setFrameReveal(1, 0);
       setFrameReveal(2, 0);
       setFrameReveal(3, 0);
-      // First lockup fades in over the full intro phase, fully visible by end
       setLockupOpacity(0, smooth(p));
       setLockupOpacity(1, 0);
       setLockupOpacity(2, 0);
@@ -471,20 +511,141 @@
     }
   }
 
+  // -------------------- SCROLL MODE --------------------
+  function updateFromScroll() {
+    const containerRect = pinContainer.getBoundingClientRect();
+    const containerHeight = pinContainer.offsetHeight;
+    const vh = window.innerHeight;
+    const scrolled = -containerRect.top;
+    const totalScrollable = containerHeight - vh;
+    let progress = scrolled / totalScrollable;
+    render(progress);
+  }
+
   let ticking = false;
   function onScroll() {
     if (!ticking) {
       requestAnimationFrame(() => {
-        update();
+        updateFromScroll();
         ticking = false;
       });
       ticking = true;
     }
   }
 
+  // -------------------- SNAP MODE --------------------
+  let snapMode = false;
+  let snapIndex = 0; // index into SNAP_POINTS
+  let snapAnimating = false;
+  let snapAnimStart = 0;
+  let snapFromProgress = 0;
+  let snapToProgress = 0;
+  const SNAP_DURATION = 700; // ms per snap
+
+  function animateSnap() {
+    if (!snapAnimating) return;
+    const now = performance.now();
+    const elapsed = now - snapAnimStart;
+    const t = clamp(elapsed / SNAP_DURATION, 0, 1);
+    const eased = easeInOutCubic(t);
+    const currentProgress = lerp(snapFromProgress, snapToProgress, eased);
+    render(currentProgress);
+    if (t < 1) {
+      requestAnimationFrame(animateSnap);
+    } else {
+      snapAnimating = false;
+    }
+  }
+
+  function snapTo(targetIndex) {
+    targetIndex = clamp(targetIndex, 0, SNAP_POINTS.length - 1);
+    if (targetIndex === snapIndex && !snapAnimating) return;
+    if (snapAnimating) return; // ignore during animation
+    snapFromProgress = SNAP_POINTS[snapIndex];
+    snapToProgress = SNAP_POINTS[targetIndex];
+    snapIndex = targetIndex;
+    snapAnimStart = performance.now();
+    snapAnimating = true;
+    requestAnimationFrame(animateSnap);
+  }
+
+  // Touch handling for snap
+  let touchStartY = 0;
+  let touchActive = false;
+  const SWIPE_THRESHOLD = 30; // px
+
+  function onTouchStart(e) {
+    if (!snapMode) return;
+    touchStartY = e.touches[0].clientY;
+    touchActive = true;
+  }
+
+  function onTouchEnd(e) {
+    if (!snapMode || !touchActive) return;
+    touchActive = false;
+    const touchEndY = e.changedTouches[0].clientY;
+    const dy = touchStartY - touchEndY; // positive = swipe up
+    if (Math.abs(dy) < SWIPE_THRESHOLD) return;
+    if (dy > 0) snapTo(snapIndex + 1);
+    else snapTo(snapIndex - 1);
+  }
+
+  // Wheel handling for snap (with cooldown)
+  let wheelCooldown = false;
+  function onWheel(e) {
+    if (!snapMode) return;
+    e.preventDefault();
+    if (wheelCooldown || snapAnimating) return;
+    if (Math.abs(e.deltaY) < 5) return;
+    wheelCooldown = true;
+    setTimeout(() => { wheelCooldown = false; }, SNAP_DURATION + 100);
+    if (e.deltaY > 0) snapTo(snapIndex + 1);
+    else snapTo(snapIndex - 1);
+  }
+
+  // Keyboard for desktop testing
+  function onKey(e) {
+    if (!snapMode) return;
+    if (e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); snapTo(snapIndex + 1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); snapTo(snapIndex - 1); }
+  }
+
+  // -------------------- MODE SWITCHING --------------------
+  function setMode(mode) {
+    if (mode === 'snap') {
+      snapMode = true;
+      document.body.classList.add('snap-mode');
+      modeScrollBtn.classList.remove('active');
+      modeSnapBtn.classList.add('active');
+      // Reset to start
+      snapIndex = 0;
+      snapAnimating = false;
+      window.scrollTo(0, 0);
+      render(SNAP_POINTS[0]);
+    } else {
+      snapMode = false;
+      document.body.classList.remove('snap-mode');
+      modeScrollBtn.classList.add('active');
+      modeSnapBtn.classList.remove('active');
+      window.scrollTo(0, 0);
+      updateFromScroll();
+    }
+  }
+
+  modeScrollBtn.addEventListener('click', () => setMode('scroll'));
+  modeSnapBtn.addEventListener('click', () => setMode('snap'));
+
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', update);
-  update();
+  window.addEventListener('resize', () => {
+    if (snapMode) render(SNAP_POINTS[snapIndex]);
+    else updateFromScroll();
+  });
+  window.addEventListener('touchstart', onTouchStart, { passive: true });
+  window.addEventListener('touchend', onTouchEnd, { passive: true });
+  window.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('keydown', onKey);
+
+  updateFromScroll();
 </script>
 
 </body>
