@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<!-- saved from url=(0066)file:///Users/andreaslevin/Downloads/neko-lockscroll-anchor_1.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neko · Locked-scroll lockup anchor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com/">
+<link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+<link href="./alignment_files/css2" rel="stylesheet">
+<style>
+  :root{
+    --topbar-h: 10px;
+    --ink: #101010;
+    --ink-soft: #1f1f1f;
+    --muted: #6c6c6c;
+    --muted-2: #b4b1aa;
+    --line: #e8e5de;
+    --teal: #12a3b8;
+    --teal-deep: #0b7d8e;
+    --sand: #efe9df;
+    --paper: #ffffff;
+    --serif: "DM Serif Display", Georgia, "Times New Roman", serif;
+    --sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --gap-eyebrow: 30px;
+    --ease: cubic-bezier(.16,1,.3,1);
+  }
+
+  *{ box-sizing: border-box; margin: 0; padding: 0; }
+  html, body{ height: 100%; }
+  body{
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    overflow: hidden;               /* page is locked; stepping is controlled */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .topbar{
+    position: fixed; top: 0; left: 0; right: 0;
+    height: var(--topbar-h); background: #000; z-index: 60;
+  }
+
+  .scroll-wrap{
+    position: relative;
+    margin-top: var(--topbar-h);
+    height: calc(100vh - var(--topbar-h));
+  }
+  .stage{
+    position: relative;
+    height: 100%;
+    display: flex;
+    overflow: hidden;
+    background: var(--paper);
+  }
+
+  /* ---------- LEFT: image filmstrip ---------- */
+  .left{
+    position: relative;
+    flex: 0 0 47%;
+    overflow: hidden;
+    background: var(--sand);
+    border-bottom-right-radius: 22px;
+  }
+  .filmstrip{
+    position: absolute; inset: 0 auto auto 0;
+    width: 100%;
+    will-change: transform;
+    transition: transform .7s var(--ease);
+  }
+  .frame{
+    position: relative;
+    width: 100%;
+    display: flex; align-items: flex-end;
+    padding: 40px; overflow: hidden;
+  }
+  .frame .cap{
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    padding: 9px 14px; border-radius: 999px; backdrop-filter: blur(6px);
+  }
+  .frame .cap .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+
+  .frame.skin { background: linear-gradient(158deg,#ece0cd 0%, #d8c3a6 78%); }
+  .frame.heart{ background: linear-gradient(158deg,#123a40 0%, #0a2023 100%); }
+  .frame.blood{ background: linear-gradient(158deg,#e7d6b6 0%, #ceb185 100%); }
+  .frame.body { background: linear-gradient(158deg,#deded8 0%, #c2c2ba 100%); }
+  .frame.skin .cap, .frame.blood .cap, .frame.body .cap{ color: var(--ink); background: rgba(255,255,255,.55); }
+  .frame.heart .cap{ color: #eaf6f7; background: rgba(255,255,255,.10); }
+
+  .moles span{ position: absolute; border: 1.6px solid rgba(18,163,184,.85); border-radius: 6px; }
+  .moles .m1{ width: 30px; height: 30px; top: 46%; left: 30%; background: rgba(18,163,184,.10); }
+  .moles .m2{ width: 18px; height: 18px; top: 58%; left: 41%; }
+  .moles .m3{ width: 22px; height: 22px; top: 67%; left: 26%; }
+  .moles .m4{ width: 16px; height: 16px; top: 52%; left: 53%; }
+  .moles .m5{ width: 26px; height: 26px; top: 73%; left: 47%; }
+  .moles .tag{ position: absolute; font-size: 10px; font-weight: 700; color: var(--teal-deep); letter-spacing: .04em; }
+  .moles .t1{ top: 70%; left: 18%; }
+  .moles .t2{ top: 81%; left: 50%; }
+
+  .pulse{ position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+    background: linear-gradient(90deg,transparent, rgba(234,246,247,.35) 20%, rgba(234,246,247,.35) 80%, transparent); }
+  .pulse::after{ content:""; position: absolute; left: 44%; top: -16px; width: 60px; height: 33px;
+    border: 1.5px solid rgba(234,246,247,.5); border-bottom: none; border-radius: 30px 30px 0 0; }
+
+  .brand{ position: absolute; top: 26px; left: 26px; z-index: 5;
+    width: 52px; height: 52px; border-radius: 14px; background: #161616; display: grid; place-items: center; }
+  .brand svg{ width: 24px; height: 24px; }
+
+  .note-tag{ position: absolute; bottom: 26px; right: 26px; z-index: 5;
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: rgba(255,255,255,.7); background: rgba(0,0,0,.28);
+    padding: 6px 11px; border-radius: 999px; backdrop-filter: blur(4px); }
+
+  /* ---------- RIGHT: lockup ---------- */
+  .right{
+    flex: 1 1 53%;
+    background: var(--paper);
+    display: flex; flex-direction: column;
+    padding: 30px 64px 44px;
+  }
+  .topnav{ display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+  .topnav nav{ display: flex; gap: 30px; }
+  .topnav nav a{ font-size: 15px; font-weight: 500; color: var(--ink); text-decoration: none; }
+  .topnav nav a:hover{ color: var(--muted); }
+  .pill{ display: inline-flex; align-items: center; gap: 12px;
+    background: var(--teal); color: #fff; text-decoration: none; font-weight: 600; font-size: 15px;
+    padding: 14px 22px; border-radius: 999px; transition: background .2s ease; }
+  .pill:hover{ background: var(--teal-deep); }
+  .pill svg{ width: 16px; height: 16px; }
+
+  .lockup-area{ position: relative; flex: 1 1 auto; margin-top: 16px; }
+
+  .eyebrow{ position: absolute; left: 0; right: 0; display: flex; gap: 26px; }
+  .eyebrow b{ font-size: 13px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--muted-2); cursor: pointer; transition: color .3s ease; }
+  .eyebrow b.on{ color: var(--ink); }
+  .eyebrow b:hover{ color: var(--muted); }
+
+  /* all lockups share one top -> top edge never moves; only the active one is visible */
+  .content-stack{ position: absolute; left: 0; right: 0; }
+  .lockup{
+    position: absolute; top: 0; left: 0; right: 0;
+    opacity: 0; transform: translateY(30px);
+    will-change: transform, opacity;
+  }
+  .lockup.past{ transform: translateY(-30px); }
+  .lockup.active{ opacity: 1; transform: none; }
+
+  .lockup h1{ font-family: var(--serif); font-weight: 400;
+    font-size: clamp(40px, 4.1vw, 58px); line-height: 1.04; letter-spacing: -0.005em; max-width: 13ch; }
+  .lockup p{ margin-top: 26px; font-size: 18px; line-height: 1.55; color: var(--muted); max-width: 32rem; }
+  .cta{ margin-top: 34px; display: inline-flex; align-items: center; gap: 18px;
+    background: none; border: none; cursor: pointer; font-family: var(--sans); }
+  .cta .circ{ width: 56px; height: 56px; border-radius: 16px; background: var(--ink);
+    display: grid; place-items: center; transition: transform .2s ease; }
+  .cta:hover .circ{ transform: translateX(4px); }
+  .cta .circ svg{ width: 19px; height: 19px; }
+  .cta span{ font-size: 16px; font-weight: 600; color: var(--ink); }
+
+  /* transitions gated until first measure (avoids load flash) */
+  .lockup-area .eyebrow,
+  .lockup-area .content-stack{ transition: none; }
+  .lockup-area.ready .eyebrow,
+  .lockup-area.ready .content-stack{ transition: top .45s var(--ease); }
+  .lockup-area.ready .lockup{ transition: opacity .5s ease, transform .7s var(--ease); }
+
+  /* anchor guides (debug) */
+  .guide{ position: absolute; left: -64px; right: -64px; pointer-events: none; opacity: 0; transition: opacity .2s; z-index: 8; }
+  .guide.show{ opacity: 1; }
+  .guide-center{ border-top: 1px dashed rgba(16,16,16,.28); }
+  .guide-center::after{ content:"viewport centre"; position: absolute; right: 64px; top: 4px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgba(16,16,16,.45); }
+  .guide-anchor{ border-top: 1.5px solid var(--teal); }
+  .guide-anchor::after{ content:"copy anchor (fixed)"; position: absolute; right: 64px; top: 4px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--teal-deep); }
+
+  /* scroll hint */
+  .scroll-hint{ position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 55;
+    display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: .05em; color: var(--muted);
+    background: rgba(255,255,255,.72); backdrop-filter: blur(6px); padding: 9px 16px; border-radius: 999px;
+    border: 1px solid var(--line); transition: opacity .4s ease; }
+  .scroll-hint.hide{ opacity: 0; pointer-events: none; }
+  .scroll-hint .mwheel{ width: 15px; height: 22px; border: 1.5px solid var(--muted); border-radius: 8px; position: relative; }
+  .scroll-hint .mwheel::after{ content:""; position: absolute; left: 50%; top: 4px; transform: translateX(-50%);
+    width: 2px; height: 5px; border-radius: 2px; background: var(--muted); animation: wheel 1.4s ease-in-out infinite; }
+  @keyframes wheel{ 0%,100%{ opacity:.3; transform: translate(-50%,0);} 50%{ opacity:1; transform: translate(-50%,5px);} }
+
+  /* ---------- proto panel ---------- */
+  .panel{ position: fixed; left: 18px; bottom: 18px; z-index: 80; width: 250px;
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 10px 34px rgba(0,0,0,.13); font-size: 12.5px; overflow: hidden; }
+  .panel-h{ width: 100%; text-align: left; cursor: pointer; background: #fafafa; border: none;
+    border-bottom: 1px solid var(--line); padding: 11px 14px; font-weight: 600; letter-spacing: .02em;
+    font-family: var(--sans); color: var(--ink); display: flex; justify-content: space-between; align-items: center; }
+  .panel-h .chev{ transition: transform .25s; color: var(--muted); }
+  .panel.collapsed .panel-h .chev{ transform: rotate(-90deg); }
+  .panel-body{ padding: 14px; display: grid; gap: 12px; }
+  .panel.collapsed .panel-body{ display: none; }
+  .panel label.lbl{ font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; }
+  .seg{ display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button{ flex: 1; border: none; background: #fff; cursor: pointer; padding: 8px 6px;
+    font-family: var(--sans); font-size: 11.5px; color: var(--muted); transition: background .15s, color .15s; }
+  .seg button + button{ border-left: 1px solid var(--line); }
+  .seg button.on{ background: var(--ink); color: #fff; }
+  .chk{ display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--ink); }
+  .chk input{ accent-color: var(--teal); }
+  .hint{ color: var(--muted); line-height: 1.45; border-top: 1px solid var(--line); padding-top: 10px; }
+
+  /* ---------- responsive fallback ---------- */
+  @media (max-width: 880px){
+    body{ overflow: auto; }
+    .scroll-wrap{ height: auto; }
+    .stage{ flex-direction: column; height: auto; }
+    .left{ flex: none; height: 52vh; border-radius: 0 0 22px 22px; }
+    .right{ padding: 28px 22px 44px; }
+    .lockup-area{ margin-top: 22px; }
+    .eyebrow{ position: relative; }
+    .content-stack{ position: relative; top: auto !important; margin-top: 26px; }
+    .lockup{ position: relative; transform: none !important; display: none; }
+    .lockup.active{ display: block; opacity: 1; }
+    .guide, .panel, .scroll-hint{ display: none; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .lockup-area.ready .lockup{ transition: opacity .2s linear; }
+    .lockup, .lockup.past{ transform: none; }
+    .filmstrip{ transition: none; }
+    .scroll-hint .mwheel::after{ animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar"></div>
+
+  <section class="scroll-wrap">
+    <div class="stage">
+
+      <!-- LEFT -->
+      <div class="left">
+        <div class="brand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+            <path d="M5 19 L5 7 L12 14"></path><path d="M19 5 L19 17 L12 10"></path>
+          </svg>
+        </div>
+
+        <div class="filmstrip" style="transform: translateY(-1908px); height: 3816px;">
+          <div class="frame skin" style="height: 954px;">
+            <div class="moles">
+              <span class="m1"></span><span class="m2"></span><span class="m3"></span>
+              <span class="m4"></span><span class="m5"></span>
+              <span class="tag t1">#1098</span><span class="tag t2">#203</span>
+            </div>
+            <span class="cap"><span class="dot"></span>Imaging · 2,000+ photos</span>
+          </div>
+          <div class="frame heart" style="height: 954px;">
+            <div class="pulse"></div>
+            <span class="cap"><span class="dot"></span>Cardiovascular · rhythm &amp; arteries</span>
+          </div>
+          <div class="frame blood" style="height: 954px;">
+            <span class="cap"><span class="dot"></span>Blood · cholesterol &amp; glucose</span>
+          </div>
+          <div class="frame body" style="height: 954px;">
+            <span class="cap"><span class="dot"></span>Full body · one connected view</span>
+          </div>
+        </div>
+
+        <div class="note-tag">Not final · layout &amp; motion reference</div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="right">
+        <div class="topnav">
+          <nav><a href="file:///Users/andreaslevin/Downloads/neko-lockscroll-anchor_1.html#">Health scan</a><a href="file:///Users/andreaslevin/Downloads/neko-lockscroll-anchor_1.html#">About us</a></nav>
+          <a class="pill" href="file:///Users/andreaslevin/Downloads/neko-lockscroll-anchor_1.html#">Join the waitlist
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+          </a>
+        </div>
+
+        <div class="lockup-area ready">
+          <div class="guide guide-center" style="top: 408.5px;"></div>
+          <div class="guide guide-anchor" style="top: 215.5px;"></div>
+
+          <div class="eyebrow" style="top: 168.5px;">
+            <b class="" data-i="0">Skin</b><b data-i="1" class="">Heart</b><b data-i="2" class="on">Blood</b><b data-i="3" class="">Body</b>
+          </div>
+
+          <div class="content-stack" style="top: 215.5px;">
+            <article class="lockup past" data-i="0">
+              <h1>Your skin, in more detail than you've ever seen before</h1>
+              <p>Neko takes over 2,000 high-resolution images of your skin, mapping every mole from head to toe — so we know what warrants a closer look.</p>
+              <button class="cta"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span><span>Learn more</span></button>
+            </article>
+
+            <article class="lockup past" data-i="1">
+              <h1>A clearer picture of your heart</h1>
+              <p>We measure your rhythm and the stiffness of your arteries to understand your cardiovascular health today.</p>
+              <button class="cta"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span><span>Learn more</span></button>
+            </article>
+
+            <article class="lockup active" data-i="2">
+              <h1>Your blood, read with precision</h1>
+              <p>A single sample captures cholesterol, blood glucose and dozens of markers that shape your long-term health.</p>
+              <button class="cta"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span><span>Learn more</span></button>
+            </article>
+
+            <article class="lockup" data-i="3">
+              <h1>Your whole body, seen as one</h1>
+              <p>We bring thousands of data points together — from your skin and heart to your blood — into one connected picture of your health, so nothing meaningful slips past unnoticed.</p>
+              <button class="cta"><span class="circ"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span><span>Learn more</span></button>
+            </article>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="scroll-hint hide"><span class="mwheel"></span> Scroll, swipe, or use ↑ ↓ to move through features</div>
+
+  <!-- prototype controls -->
+  <div class="panel" id="panel">
+    <button class="panel-h" id="panelToggle">Lockup anchor <span class="chev">▾</span></button>
+    <div class="panel-body">
+      <span class="lbl">Anchor reference</span>
+      <div class="seg" id="seg">
+        <button data-mode="first" class="on">Feature 1 centred</button>
+        <button data-mode="tallest">Tallest centred</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="guides"> Show anchor guides</label>
+      <p class="hint">The top of the copy block is pinned to one fixed Y. Copy grows downward — the eyebrow and heading top never move.</p>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const N = 4;
+  const GAP = 30;
+
+  const wrap   = document.querySelector('.scroll-wrap');
+  const stage  = document.querySelector('.stage');
+  const left   = document.querySelector('.left');
+  const strip  = document.querySelector('.filmstrip');
+  const frames = [...document.querySelectorAll('.frame')];
+  const area   = document.querySelector('.lockup-area');
+  const eyebrow= document.querySelector('.eyebrow');
+  const stack  = document.querySelector('.content-stack');
+  const lockups= [...document.querySelectorAll('.lockup')];
+  const eyeItems = [...document.querySelectorAll('.eyebrow b')];
+  const gCenter= document.querySelector('.guide-center');
+  const gAnchor= document.querySelector('.guide-anchor');
+  const hint   = document.querySelector('.scroll-hint');
+
+  let mode = 'first';
+  let leftH = 0;
+  let Tc = 0;
+  let current = 0;
+  let animating = false;
+  let unlockT = null;
+
+  function applyImage(){
+    strip.style.transform = `translateY(${(-current * leftH).toFixed(2)}px)`;
+  }
+
+  function paint(){
+    lockups.forEach((el, i) => {
+      el.classList.toggle('active', i === current);
+      el.classList.toggle('past', i < current);
+    });
+    eyeItems.forEach((b, i) => b.classList.toggle('on', i === current));
+    applyImage();
+  }
+
+  function goTo(i){
+    i = Math.max(0, Math.min(N - 1, i));
+    if (i === current) return;
+    current = i;
+    paint();
+    if (hint) hint.classList.add('hide');
+  }
+  const next = () => goTo(current + 1);
+  const prev = () => goTo(current - 1);
+
+  function measure(){
+    leftH = left.clientHeight;
+    strip.style.height = (N * leftH) + 'px';
+    frames.forEach(f => f.style.height = leftH + 'px');
+    applyImage();
+
+    if (window.innerWidth > 880){
+      const H = area.clientHeight;
+      const E = eyebrow.offsetHeight;
+      const heights = lockups.map(l => l.offsetHeight);
+      const ref = (mode === 'tallest') ? Math.max(...heights) : heights[0];
+      let Te = Math.max((H - (E + GAP + ref)) / 2, 8);
+      Tc = Te + E + GAP;
+      eyebrow.style.top = Te + 'px';
+      stack.style.top = Tc + 'px';
+      gCenter.style.top = (H / 2) + 'px';
+      gAnchor.style.top = Tc + 'px';
+    } else {
+      eyebrow.style.top = '';
+      stack.style.top = '';
+    }
+    if (!area.classList.contains('ready')){
+      requestAnimationFrame(() => area.classList.add('ready'));
+    }
+  }
+
+  function scheduleUnlock(){
+    clearTimeout(unlockT);
+    unlockT = setTimeout(() => { animating = false; }, 700);
+  }
+
+  // wheel: one gesture -> one feature (momentum keeps the lock alive, then releases)
+  function onWheel(e){
+    if (window.innerWidth <= 880) return;
+    if (Math.abs(e.deltaY) < 5) return;
+    e.preventDefault();
+    if (animating){ scheduleUnlock(); return; }
+    animating = true;
+    (e.deltaY > 0 ? next : prev)();
+    scheduleUnlock();
+  }
+
+  function onKey(e){
+    const down = ['ArrowDown','PageDown',' ','Spacebar'].includes(e.key);
+    const up   = ['ArrowUp','PageUp'].includes(e.key);
+    if (!down && !up) return;
+    e.preventDefault();
+    if (animating) return;
+    animating = true;
+    down ? next() : prev();
+    scheduleUnlock();
+  }
+
+  let touchY = null;
+  function onTouchStart(e){ touchY = e.touches[0].clientY; }
+  function onTouchEnd(e){
+    if (touchY === null || window.innerWidth <= 880) return;
+    const dy = touchY - e.changedTouches[0].clientY;
+    touchY = null;
+    if (Math.abs(dy) < 40 || animating) return;
+    animating = true;
+    (dy > 0 ? next : prev)();
+    scheduleUnlock();
+  }
+
+  eyeItems.forEach((b, i) => b.addEventListener('click', () => goTo(i)));
+
+  document.getElementById('panelToggle').addEventListener('click', () =>
+    document.getElementById('panel').classList.toggle('collapsed'));
+  document.getElementById('seg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    mode = btn.dataset.mode;
+    [...e.currentTarget.children].forEach(c => c.classList.toggle('on', c === btn));
+    measure();
+  });
+  document.getElementById('guides').addEventListener('change', (e) => {
+    gCenter.classList.toggle('show', e.target.checked);
+    gAnchor.classList.toggle('show', e.target.checked);
+  });
+
+  window.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('touchstart', onTouchStart, { passive: true });
+  window.addEventListener('touchend', onTouchEnd, { passive: true });
+  window.addEventListener('resize', measure);
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  window.addEventListener('load', measure);
+  setTimeout(measure, 350);
+  paint();
+  measure();
+})();
+</script>
+
+
+</body></html>
